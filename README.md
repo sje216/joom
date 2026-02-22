@@ -1,137 +1,162 @@
-🎥 WebRTC 기반 화상채팅 서비스
+# 🎥 WebRTC 기반 대규모 화상채팅 서비스
 
-WebRTC SFU 구조를 기반으로
-실시간 화상채팅 + 메시지 + CI/CD를 구현한 개인 프로젝트
+WebRTC와 SFU 아키텍처를 기반으로  
+**실시간 화상채팅 + 메시지 기능**을 제공하는 개인 프로젝트입니다.
 
-🔗 Demo
+단순 기능 구현을 넘어  
+**확장성, 장애 대응, 네트워크 지연 최소화**를 목표로 설계했습니다.
 
-URL: (배포 후 추가)
+---
 
-Test Account: (선택)
+## 🔗 Demo
+- URL: (배포 후 추가)
 
-📌 Project Overview
-서비스 설명
+---
 
-다수의 사용자가 실시간 화상채팅과 메시지를 동시에 주고받을 수 있는 서비스
+## 📌 Project Overview
 
-SFU 방식을 적용해 낮은 지연 시간과 비용 효율성 확보
+### 서비스 설명
+- 다수의 사용자가 **실시간 화상채팅과 메시지를 동시에** 주고받을 수 있는 서비스
+- WebRTC SFU 구조를 적용해 **낮은 지연 시간과 비용 효율성** 확보
+- 시그널링 서버와 미디어 서버를 분리하여 **확장성과 안정성**을 고려한 설계
 
-시그널링과 미디어 경로를 분리해 확장성과 안정성을 고려한 설계
+### 개발 목표
+- WebRTC 기반 실시간 통신 구조 이해
+- 대규모 트래픽을 고려한 서버 분산 설계
+- CI/CD를 통한 실서비스 수준의 배포 경험
 
-🧩 Features
-화상채팅
+---
 
-1:1 및 다자간 화상채팅
+## 🧩 Features
 
-WebRTC 기반 실시간 미디어 전송
+### 화상채팅
+- 1:1 / 다자간 화상채팅
+- WebRTC 기반 실시간 미디어 전송
+- SFU(mediasoup) 방식 적용
 
-SFU(mediasoup) 적용
+### 메시지
+- WebRTC DataChannel 기반 메시지 송수신
+- 전체 메시지
+- 귓속말(특정 사용자에게만 전송)
 
-메시지
+### 네트워크 대응
+- STUN 서버를 통한 NAT Traversal
+- STUN 실패 시 TURN 서버 fallback
+- UDP 기반 전송으로 실시간성 보장
 
-WebRTC DataChannel 기반 메시지 송수신
+---
 
-전체 메시지 / 귓속말(Private Message)
+## 🏗️ Architecture
 
-네트워크 대응
+### 전체 시스템 구조
+```text
+[ Browser ]
+     │
+     │ WebSocket (Signaling)
+     ▼
+[ Application Load Balancer ]
+     ▼
+[ Signaling Server (Node.js) ]
+     │
+     ├─ Redis (Room ↔ SFU Mapping, 상태 공유)
+     │
+     ▼
+[ SFU Server (mediasoup) ]
+     │
+     └─ WebRTC Media (UDP)
+```
+---
+## 🛠 Tech Stack
 
-STUN / TURN 서버 연동
+### Frontend
 
-NAT 환경에서도 안정적인 연결 지원
+- WebRTC API
 
-운영/배포
+- WebSocket
 
-CI/CD 기반 자동 배포
-
-무중단(rolling) 배포 지원
-
-🏗️ Architecture
-전체 구조
-Browser
-  │ WebSocket (Signaling)
-  ▼
-ALB
-  ▼
-Signaling Server (Node.js)
-  │
-  ├─ Redis (Room ↔ SFU Mapping)
-  │
-  ▼
-SFU Server (mediasoup)
-  │
-  └─ WebRTC Media (UDP)
-설계 핵심
-
-Control Plane / Media Plane 분리
-
-시그널링 서버는 Stateless → 수평 확장
-
-SFU는 방 단위 고정 할당 → 연결 안정성 확보
-
-Redis를 통해 다수 시그널링 서버 간 상태 공유
-
-sticky session 없이 확장 가능
-
-🛠 Tech Stack
-Frontend
-
-WebRTC API
-
-WebSocket
-
-HTML / JavaScript (or React)
+- JavaScript
 
 Backend
 
-Node.js
+- Node.js
 
-WebSocket
+- WebSocket
 
-mediasoup (SFU)
+- mediasoup (SFU)
 
-Infrastructure
+State & Messaging
 
-AWS EC2
+- Redis
 
-Application Load Balancer
+ Room ↔ SFU 매핑
+
+ SFU 상태 공유
+
+---
+## ☁️ Infrastructure
+### AWS 구성
+
+- EC2
+
+Signaling Server
+
+SFU Server
+
+STUN / TURN Server(coturn)
+
+- Application Load Balancer (ALB)
+
+시그널링 서버 트래픽 분산
 
 Redis
 
-STUN / TURN (coturn)
+다수 시그널링 서버 간 상태 공유
 
-DevOps
+서버 분산 전략
 
-Docker
+시그널링 서버
 
-GitHub Actions (CI)
+ALB 기반 수평 확장
 
-Rolling Deployment (CD)
+Stateless 설계
 
-🚀 Getting Started
-Prerequisites
+SFU 서버
 
-Node.js 18+
+방 단위 고정 할당
 
-Docker
+신규 방부터 새 인스턴스로 분산
 
-Redis
+TURN 서버
 
-Local Run
-# signaling server
-cd signaling
-npm install
-npm run dev
+최후의 수단으로만 사용 (비용 고려)
 
-# SFU server
-cd sfu
-npm install
-npm run dev
-🔄 CI / CD Pipeline
+🔄 WebRTC Flow
+1️⃣ 시그널링 단계
+
+클라이언트가 WebSocket으로 시그널링 서버 연결
+
+방 생성 / 참여
+
+SDP Offer / Answer 교환
+
+ICE Candidate 교환
+
+2️⃣ 미디어 연결 단계
+
+시그널링 서버가 Redis에서 방에 할당된 SFU 조회
+
+클라이언트가 해당 SFU와 WebRTC 연결
+
+미디어 스트림은 브라우저 ↔ SFU 간 직접 전송
+
+🔄 CI / CD (DevOps)
 CI (GitHub Actions)
 
-코드 푸시 시 자동 실행
+GitHub Push / PR 발생 시 자동 실행
 
-Lint / Test
+코드 Lint
+
+테스트 수행
 
 Docker 이미지 빌드
 
@@ -141,71 +166,51 @@ EC2 기반 배포
 
 시그널링 서버 Rolling 업데이트
 
-WebSocket 연결 유지
+기존 WebSocket 연결 유지
 
-SFU 서버는 신규 방부터 적용
+SFU 서버는 신규 방부터 새 인스턴스 적용
 
 ⚠️ Failure Scenarios
 상황	영향
-시그널링 서버 다운	기존 통화 유지
+시그널링 서버 장애	기존 화상채팅 유지
 Redis 장애	신규 방 생성 불가
-SFU 재시작	해당 방만 종료
+SFU 서버 장애	해당 방 화상채팅 종료
 
-WebRTC 미디어는 브라우저 ↔ SFU 직접 연결로
-시그널링 장애 시에도 기존 통화 유지
-
-🧠 Key Design Decisions
-
-왜 SFU인가?
-
-MCU 대비 낮은 지연 / 비용 효율
-
-왜 Redis인가?
-
-다수 시그널링 서버 간 판단 기준 공유
-
-왜 sticky session을 사용하지 않는가?
-
-장애 대응과 수평 확장을 위해 Stateless 설계
-
-왜 SFU는 EC2인가?
-
-장시간 UDP 연결과 포트 제어 필요
+WebRTC 미디어는 브라우저 ↔ SFU 간 직접 연결되므로
+시그널링 서버 장애 시에도 기존 통화는 유지됩니다.
 
 📈 Scaling Strategy
 
 시그널링 서버: ALB 기반 수평 확장
 
-SFU 서버: 신규 방부터 새 인스턴스 할당
+SFU 서버: 방 단위 분산 및 신규 방 우선 할당
 
-리전 기반 분산으로 지연 최소화
+대규모 환경에서는 시그널링 서버를 EKS로 이전 가능
 
 🧪 What I Learned
 
-WebRTC 시그널링과 미디어 경로의 분리 설계
+WebRTC 시그널링과 미디어 경로 분리 설계
 
-SFU 구조에서의 부하 분산 전략
+SFU 기반 화상채팅의 부하 분산 전략
 
 Redis를 활용한 분산 환경 상태 관리
 
-WebSocket 기반 실시간 서비스의 CI/CD 운영
+WebSocket 기반 실시간 서비스 운영
 
-실시간 서비스에서의 장애 허용 설계
+CI/CD를 통한 무중단 배포 경험
 
 📌 Future Improvements
 
-인증/인가 (JWT)
+사용자 인증 / 인가 (JWT)
 
 EKS 기반 시그널링 서버 운영
 
 SFU 자동 스케일링
 
-모니터링 (Prometheus / Grafana)
+모니터링 시스템 도입 (Prometheus / Grafana)
 
 🙋‍♂️ Author
 
-Name: (본인 이름)
+Name: (이름)
 
 GitHub: (링크)
-
-Email: (선택)
