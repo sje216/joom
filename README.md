@@ -96,121 +96,124 @@ State & Messaging
 ## ☁️ Infrastructure
 ### AWS 구성
 
-- EC2
+ EC2
 
-Signaling Server
+- Signaling Server
 
-SFU Server
+- SFU Server
 
-STUN / TURN Server(coturn)
+- STUN / TURN Server(coturn)
 
-- Application Load Balancer (ALB)
+Application Load Balancer (ALB)
 
-시그널링 서버 트래픽 분산
+- 시그널링 서버 트래픽 분산
 
 Redis
 
-다수 시그널링 서버 간 상태 공유
+- 다수 시그널링 서버 간 상태 공유
 
-서버 분산 전략
+### 서버 분산 전략
 
 시그널링 서버
 
-ALB 기반 수평 확장
+- ALB 기반 수평 확장
 
-Stateless 설계
+- Stateless 설계
 
 SFU 서버
 
-방 단위 고정 할당
+- 방 단위 고정 할당
 
-신규 방부터 새 인스턴스로 분산
+- 신규 방부터 새 인스턴스로 분산
 
 TURN 서버
+- 최후의 수단으로만 사용 (비용 고려)
 
-최후의 수단으로만 사용 (비용 고려)
+---
+## 🔄 WebRTC Flow
+### 1️⃣ 시그널링 단계
 
-🔄 WebRTC Flow
-1️⃣ 시그널링 단계
+1. 클라이언트가 WebSocket으로 시그널링 서버 연결
 
-클라이언트가 WebSocket으로 시그널링 서버 연결
+2. 방 생성 / 참여
 
-방 생성 / 참여
+3. SDP Offer / Answer 교환
 
-SDP Offer / Answer 교환
+4. ICE Candidate 교환
 
-ICE Candidate 교환
+### 2️⃣ 미디어 연결 단계
 
-2️⃣ 미디어 연결 단계
+1. 시그널링 서버가 Redis에서 방에 할당된 SFU 조회
 
-시그널링 서버가 Redis에서 방에 할당된 SFU 조회
+2. 클라이언트가 해당 SFU와 WebRTC 연결
 
-클라이언트가 해당 SFU와 WebRTC 연결
+3. 미디어 스트림은 브라우저 ↔ SFU 간 직접 전송
+---
+## 🔄 CI / CD (DevOps)
+### CI (GitHub Actions)
 
-미디어 스트림은 브라우저 ↔ SFU 간 직접 전송
+- GitHub Push / PR 발생 시 자동 실행
 
-🔄 CI / CD (DevOps)
-CI (GitHub Actions)
+- 코드 Lint
 
-GitHub Push / PR 발생 시 자동 실행
+- 테스트 수행
 
-코드 Lint
+- Docker 이미지 빌드
 
-테스트 수행
+### CD
 
-Docker 이미지 빌드
+- EC2 기반 배포
 
-CD
+- 시그널링 서버 Rolling 업데이트
 
-EC2 기반 배포
+- 기존 WebSocket 연결 유지
 
-시그널링 서버 Rolling 업데이트
-
-기존 WebSocket 연결 유지
-
-SFU 서버는 신규 방부터 새 인스턴스 적용
-
-⚠️ Failure Scenarios
-상황	영향
+- SFU 서버는 신규 방부터 새 인스턴스 적용
+---
+## ⚠️ Failure Scenarios
+### 상황	영향
+---
 시그널링 서버 장애	기존 화상채팅 유지
+---
 Redis 장애	신규 방 생성 불가
+---
 SFU 서버 장애	해당 방 화상채팅 종료
 
 WebRTC 미디어는 브라우저 ↔ SFU 간 직접 연결되므로
 시그널링 서버 장애 시에도 기존 통화는 유지됩니다.
+---
+## 📈 Scaling Strategy
 
-📈 Scaling Strategy
+- 시그널링 서버: ALB 기반 수평 확장
 
-시그널링 서버: ALB 기반 수평 확장
+- SFU 서버: 방 단위 분산 및 신규 방 우선 할당
 
-SFU 서버: 방 단위 분산 및 신규 방 우선 할당
+- 대규모 환경에서는 시그널링 서버를 EKS로 이전 가능
+---
+## 🧪 What I Learned
 
-대규모 환경에서는 시그널링 서버를 EKS로 이전 가능
+- WebRTC 시그널링과 미디어 경로 분리 설계
 
-🧪 What I Learned
+- SFU 기반 화상채팅의 부하 분산 전략
 
-WebRTC 시그널링과 미디어 경로 분리 설계
+- Redis를 활용한 분산 환경 상태 관리
 
-SFU 기반 화상채팅의 부하 분산 전략
+- WebSocket 기반 실시간 서비스 운영
 
-Redis를 활용한 분산 환경 상태 관리
+- CI/CD를 통한 무중단 배포 경험
+---
+## 📌 Future Improvements
 
-WebSocket 기반 실시간 서비스 운영
+- 사용자 인증 / 인가 (JWT)
 
-CI/CD를 통한 무중단 배포 경험
+- EKS 기반 시그널링 서버 운영
 
-📌 Future Improvements
+- SFU 자동 스케일링
 
-사용자 인증 / 인가 (JWT)
+- 모니터링 시스템 도입 (Prometheus / Grafana)
+---
+### 🙋‍♂️ Author
 
-EKS 기반 시그널링 서버 운영
+- Name: 신지은
 
-SFU 자동 스케일링
-
-모니터링 시스템 도입 (Prometheus / Grafana)
-
-🙋‍♂️ Author
-
-Name: (이름)
-
-GitHub: (링크)
+- GitHub: (링크)
