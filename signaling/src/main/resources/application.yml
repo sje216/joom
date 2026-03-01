@@ -6,3 +6,10 @@ spring:
 
   profiles:
     active: local
+
+logging:
+  level:
+    root: INFO
+    com.joom.signaling: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss} %-5level [%thread] %logger{36} - %msg%n"

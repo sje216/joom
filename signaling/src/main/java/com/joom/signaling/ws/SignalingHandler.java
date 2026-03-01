@@ -1,6 +1,8 @@
 package com.joom.signaling.ws;
 
 import com.joom.signaling.room.RoomService;
+import com.joom.signaling.ws.dto.JoinAck;
+import com.joom.signaling.ws.dto.Role;
 import com.joom.signaling.ws.dto.SignalMessage;
 import com.joom.signaling.ws.websocket.WebSocketSessionStore;
 import org.springframework.stereotype.Component;
@@ -34,7 +36,11 @@ public class SignalingHandler extends TextWebSocketHandler {
         SignalMessage signal =  objectMapper.readValue(message.getPayload(), SignalMessage.class);
 
         switch(signal.getType()){
-            case JOIN -> roomService.join(signal.getRoomId(), signal.getUserId(), session.getId());
+            case JOIN -> {
+                Role role = roomService.join(signal.getRoomId(), signal.getUserId(), session.getId());
+                JoinAck ack = new  JoinAck("JOIN_ACK", role.name(), signal.getUserId());
+                session.sendMessage(new TextMessage(objectMapper.writeValueAsString(ack)));
+            }
             case LEAVE -> roomService.leave(signal.getRoomId(), session.getId());
             case OFFER, ANSWER, ICE -> roomService.relay(signal.getRoomId(), signal.getTarget(), objectMapper.writeValueAsString(signal));
             default -> System.out.println("Unknown SignalType " + signal.getType());

@@ -14,15 +14,17 @@
 <input id="userId" value="user1"><br><br>
 
 <button onclick="join()">Join Room</button>
-<button onclick="sendOffer()">Send OFFER</button>
 
 <pre id="log"></pre>
 
 <video id="localvideo" autoplay playsinline muted width="300"></video>
-<video id="remotevideo" autoplay playsinline width="300"></video>
+<video id="remotevideo" autoplay playsinline muted width="300"></video>
 
 <script>
-    let ws, pc, localStream;
+    //let ws, pc, localStream, myRole;
+    let ws, localStream, myRole;
+    let pcs = {};
+    let pendingCandidates = [];
 
     // rtcpeerconnection 생성
     const config = {
@@ -39,12 +41,21 @@
         ws = new WebSocket("ws://localhost:8080/ws");
 
           ws.onopen = () => log("✅ WebSocket connected");
-          ws.onmessage = async (e) => {
-            const msg = JSON.parse(e.data);
-
+          ws.onmessage   = async (e) => {
+            const msg    = JSON.parse(e.data);
             switch (msg.type) {
-                case"JOIN":
-                     log("👤 joined: " + msg.userId);
+                case "JOIN_ACK":
+
+                    myRole = msg.role;
+                    log("🎭 role = " + myRole);
+                    await startCam();
+                    break;
+
+                case "PEER_READY":
+                    log("👥 peer ready");
+                    if(myRole === "CALLER"){
+                        await sendOffer();
+                    }
                     break;
 
                 case "LEAVE":
@@ -52,7 +63,14 @@
                     break;
 
                 case "OFFER":
+                  log("📩 OFFER received from " + msg.userId);
                   await pc.setRemoteDescription(msg.sdp);
+                  for(const c of pendingCandidates){
+                    await pc.addIceCandidate(c);
+                  }
+
+                  pendingCandidates = [];
+
                   const answer = await pc.createAnswer();
                   await pc.setLocalDescription(answer);
                   ws.send(JSON.stringify({
@@ -65,12 +83,17 @@
                   break;
 
                 case "ANSWER":
+                  log("📩 ANSWER received");
                   await pc.setRemoteDescription(msg.sdp);
                   break;
 
                 case "ICE":
-                  log(msg.candidate);
-                  await pc.addIceCandidate(msg.candidate);
+                  log("ICE received from " + JSON.stringify(msg.candidate));
+                  if(pc.remoteDescription){
+                    await pc.addIceCandidate(msg.candidate);
+                  } else {
+                    pendingCandidates.push(msg.candidate);
+                  }
                   break;
             }
         };
@@ -85,7 +108,6 @@
         userId: userId.value
       }));
 
-      startCam();
     }
 
     async function startCam() {
@@ -109,13 +131,14 @@
 
         // 상대 영상이 들어오면 화면에 출력
         pc.ontrack = e => {
-            document.querySelector("#remotevideo").srcObject = e.streams[0];
+            //log("ontrack event = " + e.streams[0].getTracks().map(t => t.kind).join(","));
+            remotevideo.srcObject = e.streams[0];
         }
 
         // ice후보가 생길때 마다 서버로 전송
         pc.onicecandidate = e => {
             if(e.candidate) {
-                log("🧊 ICE generated:"+ e.candidate);
+                log("🧊 ICE generated: " + JSON.stringify(e.candidate));
                 ws.send(JSON.stringify({
                     type: "ICE",
                     roomId: roomId.value,
@@ -129,7 +152,7 @@
 
     //
     async function sendOffer() {
-
+        log("📤 sendOffer() called");
         // 통화 제안서 만들기
         const offer = await pc.createOffer();
         // 이거 내가 보낼 정보야 라고 전화기에 저장
@@ -144,6 +167,31 @@
         }));
     }
 
+
+    function createPC(peerId){
+        const pc = new RTCPeerConnection(config);
+
+        localStream.getTracks().forEach(track => {
+            pc.addTrack(track, localStream);
+        };
+
+        pc.ontrack = e => {
+            remotevideo.srcObject = e.streams[0];
+        }
+
+        pc.onicecandidate = e => {
+            if(e.candidate) {
+                ws.send(JSON.stringify({
+                    type: "ICE",
+                    target: peerId,
+                    candidate: e.candidate,
+                }));
+            }
+        }
+
+        pcs[peerId] = pc;
+        return pc;
+    }
 
 </script>
 </body>
