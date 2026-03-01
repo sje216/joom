@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>WebRTC Signaling Test</title>
+</head>
+<body>
+<h2>WebRTC Signaling Test</h2>
+
+<label>Room ID</label>
+<input id="roomId" value="room1"><br><br>
+
+<label>User ID</label>
+<input id="userId" value="user1"><br><br>
+
+<button onclick="join()">Join Room</button>
+<button onclick="sendOffer()">Send OFFER</button>
+
+<pre id="log"></pre>
+
+<video id="localvideo" autoplay playsinline muted width="300"></video>
+<video id="remotevideo" autoplay playsinline width="300"></video>
+
+<script>
+    let ws, pc, localStream;
+
+    // rtcpeerconnection 생성
+    const config = {
+        iceServers: [
+            { urls: 'stun:stun.l.google.com:19302' }
+        ]
+    }
+
+    function log(msg) {
+      document.getElementById("log").textContent += msg + "\n";
+    }
+
+    window.onload = function () {
+        ws = new WebSocket("ws://localhost:8080/ws");
+
+          ws.onopen = () => log("✅ WebSocket connected");
+          ws.onmessage = async (e) => {
+            const msg = JSON.parse(e.data);
+
+            switch (msg.type) {
+                case"JOIN":
+                     log("👤 joined: " + msg.userId);
+                    break;
+
+                case "LEAVE":
+                    log("👤 leaved: " + msg.userId);
+                    break;
+
+                case "OFFER":
+                  await pc.setRemoteDescription(msg.sdp);
+                  const answer = await pc.createAnswer();
+                  await pc.setLocalDescription(answer);
+                  ws.send(JSON.stringify({
+                    type: "ANSWER",
+                    roomId: roomId.value,
+                    userId: userId.value,
+                    target: msg.userId,
+                    sdp: answer
+                  }));
+                  break;
+
+                case "ANSWER":
+                  await pc.setRemoteDescription(msg.sdp);
+                  break;
+
+                case "ICE":
+                  log(msg.candidate);
+                  await pc.addIceCandidate(msg.candidate);
+                  break;
+            }
+        };
+          ws.onerror = (e) => log("❌ error");
+          ws.onclose = () => log("🔌 closed");
+    }
+
+    function join() {
+      ws.send(JSON.stringify({
+        type: "JOIN",
+        roomId: roomId.value,
+        userId: userId.value
+      }));
+
+      startCam();
+    }
+
+    async function startCam() {
+        // 카메라랑 마이크 켜기
+        localStream = await navigator.mediaDevices.getUserMedia({
+         video: true,
+         audio: true
+          });
+
+        // 내 화면에 내 영상 보여줌
+        document.querySelector("#localvideo").srcObject = localStream;
+
+        // webRTC 전화기 만듦
+        pc = new RTCPeerConnection(config);
+
+
+        // 내 영상 음성을 전화기에 꽂기
+        localStream.getTracks().forEach(track => {
+        pc.addTrack(track, localStream);
+        });
+
+        // 상대 영상이 들어오면 화면에 출력
+        pc.ontrack = e => {
+            document.querySelector("#remotevideo").srcObject = e.streams[0];
+        }
+
+        // ice후보가 생길때 마다 서버로 전송
+        pc.onicecandidate = e => {
+            if(e.candidate) {
+                log("🧊 ICE generated:"+ e.candidate);
+                ws.send(JSON.stringify({
+                    type: "ICE",
+                    roomId: roomId.value,
+                    userId: userId.value,
+                    target: userId.value === "user1" ? "user2" : "user1",
+                    candidate: e.candidate, // 연결 주소 정보
+                }));
+            }
+        };
+    }
+
+    //
+    async function sendOffer() {
+
+        // 통화 제안서 만들기
+        const offer = await pc.createOffer();
+        // 이거 내가 보낼 정보야 라고 전화기에 저장
+        await pc.setLocalDescription(offer);
+        // 시그널링 서버에게 이 offer user2 에게 전달
+        ws.send(JSON.stringify({
+            type: "OFFER",
+            roomId: roomId.value,
+            userId: userId.value,
+            target: userId.value === "user1" ? "user2" : "user1",
+            sdp: offer
+        }));
+    }
+
+
+</script>
+</body>
+</html>
