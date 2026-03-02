@@ -2,10 +2,10 @@
 <html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>WebRTC Signaling Test</title>
+    <title>WebRTC Signaling (pcs version)</title>
 </head>
 <body>
-<h2>WebRTC Signaling Test</h2>
+<h2>WebRTC Signaling Test (pcs)</h2>
 
 <label>Room ID</label>
 <input id="roomId" value="room1"><br><br>
@@ -16,183 +16,217 @@
 <button onclick="join()">Join Room</button>
 
 <pre id="log"></pre>
-
+<div id="remotes"></div>
 <video id="localvideo" autoplay playsinline muted width="300"></video>
 <video id="remotevideo" autoplay playsinline muted width="300"></video>
 
 <script>
-    //let ws, pc, localStream, myRole;
-    let ws, localStream, myRole;
-    let pcs = {};
-    let pendingCandidates = [];
+    let ws;
+    let localStream;
+    let myRole;
+    let pcs = {}; // 핵심: peerId -> RTCPeerConnection
+    let pendingCandidates = {};
 
-    // rtcpeerconnection 생성
     const config = {
-        iceServers: [
-            { urls: 'stun:stun.l.google.com:19302' }
-        ]
-    }
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }
+      ]
+    };
 
     function log(msg) {
       document.getElementById("log").textContent += msg + "\n";
     }
 
-    window.onload = function () {
-        ws = new WebSocket("ws://localhost:8080/ws");
+    /* =========================
+       WebSocket
+       ========================= */
+    window.onload = () => {
+      ws = new WebSocket("ws://localhost:8080/ws");
 
-          ws.onopen = () => log("✅ WebSocket connected");
-          ws.onmessage   = async (e) => {
-            const msg    = JSON.parse(e.data);
-            switch (msg.type) {
-                case "JOIN_ACK":
+      ws.onopen = () => log("✅ WebSocket connected");
 
-                    myRole = msg.role;
-                    log("🎭 role = " + myRole);
-                    await startCam();
-                    break;
+      ws.onmessage = async (e) => {
+        const msg = JSON.parse(e.data);
 
-                case "PEER_READY":
-                    log("👥 peer ready");
-                    if(myRole === "CALLER"){
-                        await sendOffer();
-                    }
-                    break;
+        switch (msg.type) {
 
-                case "LEAVE":
-                    log("👤 leaved: " + msg.userId);
-                    break;
+          /* ---------- JOIN ---------- */
+          case "JOIN_ACK":
+            myRole = msg.role;
+            await startCam();
+            log("🎭 role = " + myRole);
+            break;
 
-                case "OFFER":
-                  log("📩 OFFER received from " + msg.userId);
-                  await pc.setRemoteDescription(msg.sdp);
-                  for(const c of pendingCandidates){
-                    await pc.addIceCandidate(c);
-                  }
+          /* ---------- 새 피어 들어옴 (CALLER만 처리) ---------- */
+          case "PEER_READY":
+            const peerId = msg.userId;
+            log("👤 peer joined: " + peerId);
 
-                  pendingCandidates = [];
+            if (myRole === "CALLER") {
+              const pc = createPC(peerId);
+              if(!pc) return;
 
-                  const answer = await pc.createAnswer();
-                  await pc.setLocalDescription(answer);
-                  ws.send(JSON.stringify({
-                    type: "ANSWER",
-                    roomId: roomId.value,
-                    userId: userId.value,
-                    target: msg.userId,
-                    sdp: answer
-                  }));
-                  break;
+              const offer = await pc.createOffer();
+              await pc.setLocalDescription(offer);
 
-                case "ANSWER":
-                  log("📩 ANSWER received");
-                  await pc.setRemoteDescription(msg.sdp);
-                  break;
-
-                case "ICE":
-                  log("ICE received from " + JSON.stringify(msg.candidate));
-                  if(pc.remoteDescription){
-                    await pc.addIceCandidate(msg.candidate);
-                  } else {
-                    pendingCandidates.push(msg.candidate);
-                  }
-                  break;
+              ws.send(JSON.stringify({
+                type: "OFFER",
+                roomId: roomId.value,
+                userId: userId.value,
+                target: msg.userId,
+                sdp: offer
+              }));
             }
-        };
-          ws.onerror = (e) => log("❌ error");
-          ws.onclose = () => log("🔌 closed");
-    }
+            break;
 
+          /* ---------- OFFER ---------- */
+          case "OFFER": {
+          const peerId = msg.userId;
+            log("📩 OFFER from " + peerId);
+
+            const pc = createPC(peerId);
+            if(!pc) return;
+            await pc.setRemoteDescription(msg.sdp);
+
+            if(pendingCandidates[peerId]) {
+                for(const c of pendingCandidates[peerId]) {
+                    await pc.addIceCandidate(c);
+                }
+                delete pendingCandidates[peerId];
+            }
+
+            const answer = await pc.createAnswer();
+            await pc.setLocalDescription(answer);
+
+            ws.send(JSON.stringify({
+              type: "ANSWER",
+              roomId: roomId.value,
+              userId: userId.value,
+              target: msg.userId,
+              sdp: answer
+            }));
+            break;
+          }
+
+          /* ---------- ANSWER ---------- */
+          case "ANSWER": {
+            const peerId = msg.userId;
+            log("📩 ANSWER from " + peerId);
+            const pc = pcs[peerId];
+            await pc.setRemoteDescription(msg.sdp);
+
+            if(pendingCandidates[peerId]) {
+                for(const c of pendingCandidates[peerId]) {
+                    await pc.addIceCandidate(c);
+                }
+                delete pendingCandidates[peerId];
+            }
+            break;
+          }
+
+          /* ---------- ICE ---------- */
+          case "ICE": {
+            const peerId = msg.userId;
+
+            if(!pendingCandidates[peerId]) {
+                pendingCandidates[peerId] = [];
+            }
+            pendingCandidates[peerId].push(msg.candidate);
+
+            const pc = pcs[peerId];
+            if(pc && pc.remoteDescription) {
+                for(const c of pendingCandidates[peerId]) {
+                    await pc.addIceCandidate(c);
+                }
+                delete pendingCandidates[peerId];
+            }
+            break;
+          }
+
+          /* ---------- LEAVE ---------- */
+          case "LEAVE":
+            log("👋 left: " + msg.userId);
+            if (pcs[msg.userId]) {
+              pcs[msg.userId].close();
+              delete pcs[msg.userId];
+            }
+            break;
+        }
+      };
+    };
+
+    /* =========================
+       JOIN
+       ========================= */
     function join() {
       ws.send(JSON.stringify({
         type: "JOIN",
         roomId: roomId.value,
         userId: userId.value
       }));
-
     }
 
+    /* =========================
+       Camera / Mic
+       ========================= */
     async function startCam() {
-        // 카메라랑 마이크 켜기
-        localStream = await navigator.mediaDevices.getUserMedia({
-         video: true,
-         audio: true
-          });
+      localStream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
 
-        // 내 화면에 내 영상 보여줌
-        document.querySelector("#localvideo").srcObject = localStream;
-
-        // webRTC 전화기 만듦
-        pc = new RTCPeerConnection(config);
-
-
-        // 내 영상 음성을 전화기에 꽂기
-        localStream.getTracks().forEach(track => {
-        pc.addTrack(track, localStream);
-        });
-
-        // 상대 영상이 들어오면 화면에 출력
-        pc.ontrack = e => {
-            //log("ontrack event = " + e.streams[0].getTracks().map(t => t.kind).join(","));
-            remotevideo.srcObject = e.streams[0];
-        }
-
-        // ice후보가 생길때 마다 서버로 전송
-        pc.onicecandidate = e => {
-            if(e.candidate) {
-                log("🧊 ICE generated: " + JSON.stringify(e.candidate));
-                ws.send(JSON.stringify({
-                    type: "ICE",
-                    roomId: roomId.value,
-                    userId: userId.value,
-                    target: userId.value === "user1" ? "user2" : "user1",
-                    candidate: e.candidate, // 연결 주소 정보
-                }));
-            }
-        };
+      localvideo.srcObject = localStream;
     }
 
-    //
-    async function sendOffer() {
-        log("📤 sendOffer() called");
-        // 통화 제안서 만들기
-        const offer = await pc.createOffer();
-        // 이거 내가 보낼 정보야 라고 전화기에 저장
-        await pc.setLocalDescription(offer);
-        // 시그널링 서버에게 이 offer user2 에게 전달
-        ws.send(JSON.stringify({
-            type: "OFFER",
+    /* =========================
+       PeerConnection 생성
+       ========================= */
+    function createPC(peerId) {
+      if(!localStream) {
+        console.warn("localStream not ready, delay createPC for", peerId);
+        return null;
+      }
+
+      if (pcs[peerId]) return pcs[peerId];
+
+      const pc = new RTCPeerConnection(config);
+
+      // local tracks
+      localStream.getTracks().forEach(track =>
+        pc.addTrack(track, localStream)
+      );
+
+      // remote track
+      pc.ontrack = e => {
+        log("🎥 ontrack from " + peerId);
+        let video = document.getElementById('remote-' + peerId);
+        if(!video){
+            video = document.createElement('video');
+            videoid = "remote-" + peerId;
+            video.autoplay = true;
+            video.width = "300";
+            video.playsInline = true;
+            document.getElementById("remotes").appendChild(video);
+        }
+        video.srcObject = e.streams[0];
+      };
+
+      // ICE
+      pc.onicecandidate = e => {
+        if (e.candidate) {
+          ws.send(JSON.stringify({
+            type: "ICE",
             roomId: roomId.value,
             userId: userId.value,
-            target: userId.value === "user1" ? "user2" : "user1",
-            sdp: offer
-        }));
-    }
-
-
-    function createPC(peerId){
-        const pc = new RTCPeerConnection(config);
-
-        localStream.getTracks().forEach(track => {
-            pc.addTrack(track, localStream);
-        };
-
-        pc.ontrack = e => {
-            remotevideo.srcObject = e.streams[0];
+            target: peerId,
+            candidate: e.candidate
+          }));
         }
+      };
 
-        pc.onicecandidate = e => {
-            if(e.candidate) {
-                ws.send(JSON.stringify({
-                    type: "ICE",
-                    target: peerId,
-                    candidate: e.candidate,
-                }));
-            }
-        }
-
-        pcs[peerId] = pc;
-        return pc;
+      pcs[peerId] = pc;
+      return pc;
     }
-
 </script>
 </body>
 </html>

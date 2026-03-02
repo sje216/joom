@@ -26,32 +26,39 @@ public class RoomService {
 
         Map<String, String> room = roomRepository.getRoom(roomId);
         boolean isFirst          = (room == null || room.isEmpty());
-        Role role                = (room == null || room.isEmpty()) ?
-                                    Role.CALLER : Role.CALLEE;
+
+        Role role                = isFirst ? Role.CALLER : Role.CALLEE;
         roomRepository.addUser(roomId, userId, sessionId);
 
         if(!isFirst){
-            notifyPeerReady(roomId);
+            notifyPeerReady(roomId, userId);
         }
         return role;
     }
 
-    private void notifyPeerReady(String roomId) throws Exception {
+    private void notifyPeerReady(String roomId, String newUserId) throws Exception {
         Map<String, String> room = roomRepository.getRoom(roomId);
         if(room == null || room.size() < 2) return;
 
-        // 첫번째 유저 caller
-        String callerSessionId  = room.values().iterator().next();
-        WebSocketSession caller = sessionStore.get(callerSessionId);
-
-        if(caller != null && caller.isOpen()){
-            caller.sendMessage(new TextMessage("""
+        String payload = """
                     {
-                        "type":"PEER_READY"
+                       "type": "PEER_READY",
+                       "userId": "%s"
                     }
-                    """));
-            log.info("👥 PEER_READY sent to CALLER");
+                    """.formatted(newUserId);
+
+        for(Map.Entry<String, String> entry : room.entrySet()) {
+            String userId = entry.getKey();
+            String sessionId = entry.getValue();
+
+            if(userId.equals(newUserId)) continue;
+
+            WebSocketSession caller = sessionStore.get(sessionId);
+            if(caller != null && caller.isOpen()){
+                caller.sendMessage(new TextMessage(payload));
+            }
         }
+        log.info("👥 PEER_READY sent to CALLER");
     }
 
     public void leave(String roomId, String userId) throws Exception {
@@ -73,7 +80,7 @@ public class RoomService {
         }
     }
 
-    private void broadcast(String roomId, String type, String userId) throws Exception {
+    public void broadcast(String roomId, String type, String userId) throws Exception {
         Map<String,String> room = roomRepository.getRoom(roomId);
         if(room == null) return;
 

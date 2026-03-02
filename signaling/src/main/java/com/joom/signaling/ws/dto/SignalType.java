@@ -5,6 +5,7 @@ public enum SignalType {
     LEAVE,
     OFFER,
     ANSWER,
-    ICE
+    ICE,
+    READY
 
 }
