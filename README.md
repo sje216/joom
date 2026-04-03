@@ -1,4 +1,7 @@
 # 🎥 WebRTC 기반 대규모 화상채팅 서비스
+> **Mediasoup(SFU)과 Spring Boot를 결합한 저지연 미디어 스트리밍 서비스**
+
+본 프로젝트는 WebRTC의 Mesh 구조가 가진 클라이언트 부하 문제를 해결하기 위해 **SFU(Selective Forwarding Unit) 아키텍처**를 채택하고, 안정적인 비즈니스 로직 처리를 위해 **Spring Boot 시그널링 서버**를 구축한 모노레포 프로젝트입니다.
 
 WebRTC와 SFU 아키텍처를 기반으로  
 **실시간 화상채팅 + 메시지 기능**을 제공하는 개인 프로젝트입니다.
